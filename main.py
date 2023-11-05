@@ -11,17 +11,12 @@ YOUTUBE_SOURCE = 'youtube'
 HASHTAG = '#antimlm'
 
 
-class YouTubeFetcher:
-    pass
-
-
 class CaptureSession:
-    def __init__(self, source_type, api_url, hashtag, date_initiated,
+    def __init__(self, source_type, hashtag, date_initiated,
                  from_date, to_date, is_complete, recordings_filename,
                  capture_session_id=None):
         self.capture_session_id = capture_session_id or date_initiated.strftime('%Y-%m-%dT%H:%M:%SZ')
         self.source_type = source_type
-        self.api_url = api_url
         self.hashtag = hashtag
         self.from_date = from_date
         self.to_date = to_date
@@ -63,35 +58,35 @@ recording_records = []
 # Create a new capture session
 capture_session = CaptureSession(
     source_type=YOUTUBE_SOURCE,
-    api_url='',
     hashtag=HASHTAG,
     date_initiated=datetime.now(),
     from_date=datetime.now(),
     to_date=None,
     is_complete=False,
-    recordings_filename=None)
+    recordings_filename=None
+)
 
 # Determine the latest capture FromDate
 # Start capturing, repeat until number of calls achieved OR no more records exist
-# Call API
-
-# '?part=snippet&order=date&publishedAfter=2023-10-01T00%3A00%3A00Z&q=%23antimlm&type=video&key=[YOUR_API_KEY]' \
-#  --header 'Authorization: Bearer [YOUR_ACCESS_TOKEN]' \
-#  --header 'Accept: application/json' \
-#  --compressed
-
 url = 'https://youtube.googleapis.com/youtube/v3/search'
 
-for i in [0]:
+next_page_token = ""
+max_pages_to_fetch = 4
+pages_count = 0
 
+while pages_count < max_pages_to_fetch and next_page_token is not None:
+    print(f"fetching page {pages_count}")
     params = dict(
         part='snippet',
         order='date',
-        publishedAfter='2023-10-01T00:00:00Z',
+        publishedAfter='2023-11-04T10:00:00Z',
         q=HASHTAG,
         type='video',
         key=YOUTUBE_API_KEY,
         fields='nextPageToken,pageInfo,items/id/videoId,items/snippet(title,channelTitle,channelId,publishTime)',
+        pageToken=next_page_token,
+        # TODO: Maximum of 50
+        maxResults=1,
     )
 
     headers = {
@@ -100,17 +95,20 @@ for i in [0]:
 
     resp = requests.get(url=url, params=params, headers=headers)
 
-    if resp.status_code != 200:
+    if not resp.ok:
+        # TODO: Handle errors
         print(resp.json())
         continue
 
     data = resp.json()
 
-    print(json.dumps(data, indent=4))
+    # print(json.dumps(data, indent=4))
     # pprint(data['items'][0])
 
     for item in data['items']:
-        pprint(item)
+        # Convert DTOs into recording records
+        # pprint(item)
+        print("fetched item")
         snippet = item['snippet']
         recording_record = RecordingRecord(
             key=item['id']['videoId'],
@@ -123,13 +121,19 @@ for i in [0]:
             date_recorded=snippet['publishTime'],
             capture_session_id=capture_session.capture_session_id
         )
-        print(recording_record)
-# Parse data into DTOs
-# Convert DTOs into recording records
-# If not already stored,
-# Save to recording record
-# If stored but different
-# Log & update the recording record
+
+        recording_records.append(recording_record)
+        # print(recording_record)
+
+    next_page_token = data.get('nextPageToken')
+    print(f"next page token: {next_page_token}")
+    pages_count += 1
+
+    # If not already stored,
+        # Save to recording record
+    # If stored but different
+        # Log & update the recording record
+print(recording_records)
 # Update capture session information
 # Save data about the capture session
 # Save data about the recording records
