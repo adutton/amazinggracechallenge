@@ -41,3 +41,8 @@ PS C:\Code\amazinggracechallenge> $env:YOUTUBE_API_KEY='INSERT YOUR KEY HERE'
 
 If using PyCharm, [create a Run Configuration](https://stackoverflow.com/a/42708480/399704) with the environment variable set.
 
+## Facebook
+
+Since I can't seem to get API access
+
+I'll have to scrape their page https://www.facebook.com/hashtag/amazinggracechallenge
