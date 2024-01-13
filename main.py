@@ -3,19 +3,28 @@ import json
 import os
 import requests
 
-from datetime import datetime
+from datetime import datetime, date, timezone
+from calendar import monthrange
 from pprint import pprint, pformat
 
 YOUTUBE_API_KEY = os.environ['YOUTUBE_API_KEY']
 YOUTUBE_SOURCE = 'youtube'
-# HASHTAG = '#amazinggracechallenge'
-HASHTAG = '#antimlm'
+HASHTAG = 'Amazing Grace'
 RESULTS_FOLDER = 'results'
 HASHTAG_FOLDER = os.path.join(os.path.abspath(RESULTS_FOLDER), HASHTAG.replace('#', ''))
 
 
 def undo_html_encoding(value):
     return value.replace('&#39;', '\'')
+
+
+def add_months(source_date, months):
+    month = source_date.month - 1 + months
+    year = source_date.year + month // 12
+    month = month % 12 + 1
+    day = min(source_date.day, monthrange(year, month)[1])
+    return datetime(year, month, day, source_date.hour, source_date.minute, source_date.second, tzinfo=timezone.utc)
+
 
 class CaptureSession:
     def __init__(self, source_type, hashtag, date_initiated,
@@ -56,15 +65,8 @@ class RecordingRecord:
         return json.dumps(vars(self), indent=4)
 
 
-def main():
+def capture_session(start_time, end_time):
 
-    if not os.path.isdir(HASHTAG_FOLDER):
-        os.makedirs(HASHTAG_FOLDER)
-
-
-    # Load all capture session records
-    capture_sessions = []
-    # Load all recording records
     recording_records = []
     # Create a new capture session
     capture_session = CaptureSession(
@@ -81,16 +83,20 @@ def main():
     url = 'https://youtube.googleapis.com/youtube/v3/search'
 
     next_page_token = ""
-    max_pages_to_fetch = 3
+    max_pages_to_fetch = 999
     max_results_per_page = 50  # Maximum 50
     pages_count = 0
+
+    published_after = start_time
+    published_before = end_time
 
     while pages_count < max_pages_to_fetch and next_page_token is not None:
         print(f"fetching page {pages_count}")
         params = dict(
             part='snippet',
             order='date',
-            publishedAfter='2023-11-01T00:00:00Z',
+            publishedAfter=published_after.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            publishedBefore=published_before.strftime("%Y-%m-%dT%H:%M:%SZ"),
             q=HASHTAG,
             type='video',
             key=YOUTUBE_API_KEY,
@@ -106,7 +112,11 @@ def main():
         resp = requests.get(url=url, params=params, headers=headers)
 
         if not resp.ok:
-            # TODO: Handle errors
+            if resp.status_code == 403:
+                print("Rate limit exceeded")
+                exit()
+
+            # TODO: Handle other errors
             print(resp.json())
             continue
 
@@ -118,7 +128,7 @@ def main():
         for item in data['items']:
             # Convert DTOs into recording records
             # pprint(item)
-            print("fetched item")
+            # print("fetched item")
             snippet = item['snippet']
             recording_record = RecordingRecord(
                 key=item['id']['videoId'],
@@ -132,37 +142,42 @@ def main():
                 capture_session_id=capture_session.capture_session_id
             )
 
-            print("appended record")
             recording_records.append(recording_record)
-            # print(recording_record)
 
         next_page_token = data.get('nextPageToken')
-        print(f"next page token: {next_page_token}")
         pages_count += 1
-
-        # If not already stored,
-            # Save to recording record
-        # If stored but different
-            # Log & update the recording record
-
-    #print(recording_records)
-    # Update capture session information
-    # Save data about the capture session
-    # Save data about the recording records
 
     if not recording_records:
         print('No records to save')
         exit()
 
-    csv_file_name = os.path.join(HASHTAG_FOLDER, capture_session.capture_session_id + '.csv')
+    # HACK FOR MONTH
+    # csv_file_name = os.path.join(HASHTAG_FOLDER, capture_session.capture_session_id + '.csv')
+    csv_file_name = os.path.join(HASHTAG_FOLDER, published_after.strftime('%Y-%m') + '.csv')
     print(f'Writing results to {csv_file_name}')
-    with open(csv_file_name, 'w+', newline='') as csv_file:
+    with open(csv_file_name, 'w+', newline='', encoding="utf-8") as csv_file:
         fieldnames = recording_records[0].__dict__.keys()
         writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
 
         writer.writeheader()
         for recording_record in recording_records:
             writer.writerow(recording_record.__dict__)
+
+
+def main():
+
+    if not os.path.isdir(HASHTAG_FOLDER):
+        os.makedirs(HASHTAG_FOLDER)
+
+    start_date = datetime.fromisoformat('2012-08-01T00:00:00Z')
+
+    while True:
+        published_after = start_date
+        published_before = add_months(published_after, 1)
+
+        capture_session(published_after, published_before)
+
+        published_after = published_before
 
 
 if __name__ == '__main__':
